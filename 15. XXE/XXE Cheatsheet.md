@@ -2,6 +2,8 @@
 
 Quick-reference companion to the full study notes. Replace `YOUR_IP` / placeholders as needed.
 
+> [Payloads](https://github.com/payload-box/xxe-injection-payload-list)
+
 ## Table of Contents
 
 1. [Core Concepts](#1-core-concepts)
