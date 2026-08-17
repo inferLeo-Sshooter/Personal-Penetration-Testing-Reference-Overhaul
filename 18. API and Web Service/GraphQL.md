@@ -1,4 +1,29 @@
+```
+# 1. GraphQL API Vulnerabilities
+## 1.1 - What is GraphQL
+## 1.2 - How GraphQL Works
+## 1.3 - What is a GraphQL schema
+## 1.4 - What are GraphQL queries
+## 1.5 - What are GraphQL mutations
+## 1.6 - Building Blocks of Queries & Mutations
+### 1. Fields
+### 2. Arguments
+### 3. Variables
+### 4. Aliases
+### 5. Fragments
+## 1.7 - Subscriptions: Real-Time Updates
+## 1.8 - Introspection: The API's Self-Documentation Feature
+## 1.9 - Example Exploitation with Mutations
+# 2. Finding GraphQL Endpoints
+## 2.1 - Universal queries
+## 2.2 - Common Endpoint Names to Try
+## 2.3 - Try Different Request Methods
+## 2.4 - Initial Testing Once Found
+# 3. Exploiting Unsanitized Arguments
+# 4. Discovering Schema Information
 
+
+```
 
 
 
@@ -543,7 +568,391 @@ After logging in, we can now access the admin endpoint, meaning we have successf
 
 ---
 
+# 2. Finding GraphQL Endpoints
 
+Before you can test a GraphQL API for vulnerabilities, you first need to find its endpoint. This is especially valuable with GraphQL because — unlike REST — **every operation goes through a single endpoint**. Once you find it, you've found the doorway to the entire API.
+
+> 💡 **Good to know:** Tools like Burp Scanner can automatically detect GraphQL endpoints for you during a scan (it flags them as "GraphQL endpoint found"). But it's still useful to understand how to find one manually.
+
+---
+
+## 2.1 - Universal queries
+
+There's a simple query you can send to almost any suspected GraphQL endpoint to check if it's really GraphQL:
+
+By sending `query{__typename}` to any GraphQL endpoint returns `{"data": {"__typename": "query"}}` in the response. This universal query helps identify GraphQL services, as `__typename` is a reserved field that returns the queried object's type as a string.
+
+```
+# Example request:
+
+POST /graphql/v1 HTTP/2
+Host: website.com
+Cookie: session=asdasdasdasd
+Content-Type: application/json
+
+{
+  "query": "query { __typename }"
+}
+```
+
+```
+# Expected Response:
+
+HTTP/2 200 OK
+Content-Type: application/json; charset=utf-8
+X-Frame-Options: SAMEORIGIN
+Content-Length: 45
+
+{
+  "data": {
+    "__typename": "query"
+  }
+}
+
+```
+
+If the `expected response` is **returned**, its confirm that target website using `GraphQL`.
+
+**Why this works:** every GraphQL API has a hidden, reserved field called `__typename`. It simply returns the *type* of whatever object you queried — as a string. Since this field always exists by default, it acts like a universal "knock on the door" to check if something is GraphQL.
+
+---
+
+## 2.2 - Common Endpoint Names to Try
+
+GraphQL services tend to reuse the same handful of URL paths. When hunting for an endpoint, try sending the universal query above to each of these:
+
+```
+/graphql
+/api
+/api/graphql
+/graphql/api
+/graphql/graphql
+```
+
+If none of those work, try tacking `/v1` onto the end (e.g. `/graphql/v1`).
+
+⚠️ **Watch out:** Many GraphQL servers respond to *any* malformed or non-GraphQL request with a generic error like `"query not present"`. Don't mistake that error for proof the endpoint *isn't* GraphQL — it might just mean your request wasn't formatted correctly.
+
+---
+
+## 2.3 - Try Different Request Methods
+
+By default, well-configured GraphQL endpoints only accept:
+
+- **Method:** `POST`
+- **Content-Type:** `application/json`
+
+This is intentional — it helps protect against CSRF attacks (more on that in a related doc).
+
+However, some poorly configured endpoints are more lenient and might also accept:
+
+- `GET` requests
+- `POST` requests with `Content-Type: application/x-www-form-urlencoded`
+
+**Example — universal query as a POST with JSON:**
+
+```http
+POST /graphql HTTP/1.1
+Host: example.com
+Content-Type: application/json
+
+{"query": "query{__typename}"}
+```
+
+**Example — same query, but as a GET request:**
+
+```http
+GET /graphql?query=query{__typename} HTTP/1.1
+Host: example.com
+```
+
+**Example — same query, but form-encoded:**
+
+```http
+POST /graphql HTTP/1.1
+Host: example.com
+Content-Type: application/x-www-form-urlencoded
+
+query=query{__typename}
+```
+
+If sending a standard `POST` + JSON request to the common endpoint names doesn't work, try these alternative methods before giving up.
+
+---
+
+## 2.4 - Initial Testing Once Found
+
+Once you've confirmed a working GraphQL endpoint, start getting familiar with it:
+
+- If it's powering a website's front end, browse the site normally (e.g., using Burp's browser).
+- Watch the HTTP history/traffic — this reveals real queries and mutations the app actually sends, which is often the fastest way to learn what operations are available and how they're structured.
+
+
+### Quick Recap
+
+| Step | What to Do |
+|---|---|
+| 1. Test if it's GraphQL | Send `query{__typename}` and look for `"__typename"` in the response |
+| 2. Try common paths | `/graphql`, `/api`, `/api/graphql`, `/graphql/api`, `/graphql/graphql`, or add `/v1` |
+| 3. Vary the request method | Try `POST` (JSON), then `GET`, then form-urlencoded `POST` if needed |
+| 4. Explore the app | Browse the site and inspect HTTP traffic to see real queries in action |
+
+---
+
+# 3. Exploiting Unsanitized Arguments
+
+Once you've found a GraphQL endpoint, a great place to start looking for bugs is in how it handles **arguments** — the values you pass in to filter or fetch specific data (like an `id`).
+
+## The Core Problem
+
+If an API uses an argument (like `id`) to fetch an object *directly*, without properly checking whether you're actually allowed to see that object, it's vulnerable to an **Insecure Direct Object Reference (IDOR)**.
+
+In plain terms: if you can just guess or change an ID and the server hands over data it shouldn't, that's a broken access control bug.
+
+---
+
+## Example Walkthrough
+
+Imagine an online shop. You send this query to list all products:
+
+```graphql
+query {
+  products {
+    id
+    name
+    listed
+  }
+}
+```
+
+You get back:
+
+```json
+{
+  "data": {
+    "products": [
+      { "id": 1, "name": "Product 1", "listed": true },
+      { "id": 2, "name": "Product 2", "listed": true },
+      { "id": 4, "name": "Product 4", "listed": true }
+    ]
+  }
+}
+```
+
+### Spot the Gap
+
+Look closely at the IDs: `1, 2, 4`. **ID 3 is missing.**
+
+Two useful inferences:
+1. Product IDs are **sequential** (1, 2, 3, 4...) — meaning they're predictable.
+2. Product 3 was probably **delisted** (hidden from public view) rather than deleted, since 4 still exists.
+
+### Exploiting the Gap
+
+Since the `product` query takes an `id` argument directly, nothing stops you from just... asking for ID 3 yourself:
+
+```graphql
+query {
+  product(id: 3) {
+    id
+    name
+    listed
+  }
+}
+```
+
+And the server happily responds:
+
+```json
+{
+  "data": {
+    "product": {
+      "id": 3,
+      "name": "Product 3",
+      "listed": false
+    }
+  }
+}
+```
+
+You've just retrieved a product that was intentionally hidden from the storefront — simply by supplying an ID that wasn't given to you. The API trusted the argument without checking if you *should* be allowed to see that specific record.
+
+---
+
+## Why This Matters
+
+This same flaw pattern isn't limited to hidden products. Depending on the API, predictable/sequential IDs combined with missing access checks could expose far more sensitive things — other users' private data, unpublished content, internal records, etc. The underlying issue is always the same: **the server assumes that if you supply an ID, you're entitled to see it.**
+
+---
+
+# 4. Discovering Schema Information
+
+Once you've found a GraphQL endpoint, the next step is figuring out what it can actually *do* — what data types exist, what queries/mutations are available, and how everything connects. The best tool for this is **introspection**.
+
+## What Is Introspection
+
+Introspection is a built-in GraphQL feature that lets you literally ask the server *"tell me about your own schema."* It's meant for legitimate tools like GraphQL IDEs and auto-generated docs — but it's just as useful (or dangerous) for anyone probing the API from the outside.
+
+It can reveal:
+- Every available query, mutation, and subscription
+- All data types and their fields
+- Sometimes even **description fields**, which can leak internal notes or sensitive hints
+
+---
+
+### Step 1: Probe — Is Introspection Even On?
+
+Best practice says introspection should be **disabled** in production. But plenty of real-world APIs forget to turn it off. A quick, lightweight way to check is this small probe query:
+
+```json
+{
+  "query": "{__schema{queryType{name}}}"
+}
+```
+
+If introspection is enabled, you'll get back the name of the root query type — confirming it works, without pulling a ton of data yet.
+
+> 💡 Tools like Burp Scanner can do this automatically and will flag it as a **"GraphQL introspection enabled"** issue if found.
+
+---
+
+### Step 2: Run the Full Introspection Query
+
+If the probe succeeds, you can go big and request *everything* — every type, field, argument, and relationship the schema defines. This is the standard, comprehensive introspection query used across the industry:
+
+```graphql
+# Full introspection query:
+
+query IntrospectionQuery {
+    __schema {
+        queryType {
+            name
+        }
+        mutationType {
+            name
+        }
+        subscriptionType {
+            name
+        }
+        types {
+         ...FullType
+        }
+        directives {
+            name
+            description
+            args {
+                ...InputValue
+        }
+        onOperation  #Often needs to be deleted to run query
+        onFragment   #Often needs to be deleted to run query
+        onField      #Often needs to be deleted to run query
+        }
+    }
+}
+
+fragment FullType on __Type {
+    kind
+    name
+    description
+    fields(includeDeprecated: true) {
+        name
+        description
+        args {
+            ...InputValue
+        }
+        type {
+            ...TypeRef
+        }
+        isDeprecated
+        deprecationReason
+    }
+    inputFields {
+        ...InputValue
+    }
+    interfaces {
+        ...TypeRef
+    }
+    enumValues(includeDeprecated: true) {
+        name
+        description
+        isDeprecated
+        deprecationReason
+    }
+    possibleTypes {
+        ...TypeRef
+    }
+}
+
+fragment InputValue on __InputValue {
+    name
+    description
+    type {
+        ...TypeRef
+    }
+    defaultValue
+}
+
+fragment TypeRef on __Type {
+    kind
+    name
+    ofType {
+        kind
+        name
+        ofType {
+            kind
+            name
+            ofType {
+                kind
+                name
+            }
+        }
+    }
+}
+```
+
+This returns a complete map of the API: every query, mutation, subscription, type, and field — including ones that were never meant to be public.
+
+> ⚠️ **Troubleshooting tip:** Some servers reject introspection queries that include the `onOperation`, `onFragment`, and `onField` directives. If your query fails, try removing those and re-running it.
+
+---
+
+### Step 3: Make Sense of the Results
+
+Introspection responses are huge — often thousands of lines of nested JSON — and hard to read manually. A [GraphQL visualizer](https://nathanrandal.com/graphql-visualizer/) (an online tool) can turn that raw response into a diagram showing how types and operations relate to each other, making it much easier to spot interesting attack surface.
+
+---
+
+## What If Introspection Is Disabled? Try "Suggestions"
+
+Even with introspection fully turned off, some GraphQL servers built on **Apollo** still leak schema info another way: through **helpful error messages**.
+
+If you send a slightly-wrong field name, Apollo might respond with something like:
+
+```
+There is no entry for 'productInfo'. Did you mean 'productInformation' instead?
+```
+
+That single error message just confirmed a real field name exists — `productInformation` — even though you never saw it in a schema. By deliberately sending near-guesses and reading the "did you mean" suggestions, you can slowly reconstruct parts of the schema by trial and error.
+
+[Clairvoyance](https://github.com/nikitastupin/clairvoyance) is a tool that automates this entire process — repeatedly guessing and reading suggestion errors to rebuild all or part of a schema automatically, without needing introspection enabled at all.
+
+> 🛡️ **Defensive note:** In Apollo Server v4+, developers can disable this leaky behavior using the `hideSchemaDetailsFromClientErrors` option.
+
+> 💡 Burp Scanner can also detect this automatically, flagging it as a **"GraphQL suggestions enabled"** issue.
+
+---
+
+## Quick Recap
+
+| Technique | How It Works | Works Even If Introspection Is Off? |
+|---|---|---|
+| **Probe query** | Small query checks if introspection responds at all | ❌ No |
+| **Full introspection query** | Pulls the entire schema — types, fields, queries, mutations | ❌ No |
+| **Visualizer** | Turns messy introspection JSON into a readable diagram | ❌ No |
+| **Suggestions abuse** | Deliberately mistyped queries trigger "did you mean...?" errors that leak real field/type names | ✅ Yes |
+| **Clairvoyance** | Automates the suggestions technique to rebuild the schema | ✅ Yes |
+
+---
 
 
 
