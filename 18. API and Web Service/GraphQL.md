@@ -202,7 +202,7 @@ The individual pieces of data you request. The response mirrors exactly what you
 
 The example below shows a query to get ID and name details for all employees, and its associated response. In this case, `id`, `name.firstname`, and `name.lastname` are the fields requested.
 
-```
+```graphql
 # Request Example:
 query myGetEmployeeQuery {
   getEmployees {
@@ -215,7 +215,7 @@ query myGetEmployeeQuery {
 }
 ```
 
-```
+```json
 # Response Example:
 {
   "data": {
@@ -257,7 +257,7 @@ query myGetEmployeeQuery {
 }
 ```
 
-```
+```json
 # Response to query:
 
 {
@@ -301,7 +301,7 @@ query getBook($id: ID!) {
 
 ### 4. Aliases
 GraphQL won't let you request the same field twice in one query. For example, the following query is invalid because it tries to return the `product` type twice:
-```
+```graphql
 # Invalid query:
 
 query getProductDetails {
@@ -332,7 +332,7 @@ query getProductDetails {
 }
 ```
 
-```
+```json
 # Response to query:
 
 {
@@ -375,7 +375,7 @@ query {
 }
 ```
 
-```
+```json
 # Response including fragment fields:
 
 {
