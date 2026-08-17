@@ -1,31 +1,31 @@
-```
-# 1. GraphQL API Vulnerabilities
-## 1.1 - What is GraphQL
-## 1.2 - How GraphQL Works
-## 1.3 - What is a GraphQL schema
-## 1.4 - What are GraphQL queries
-## 1.5 - What are GraphQL mutations
-## 1.6 - Building Blocks of Queries & Mutations
-### 1. Fields
-### 2. Arguments
-### 3. Variables
-### 4. Aliases
-### 5. Fragments
-## 1.7 - Subscriptions: Real-Time Updates
-## 1.8 - Introspection: The API's Self-Documentation Feature
-## 1.9 - Example Exploitation with Mutations
-# 2. Finding GraphQL Endpoints
-## 2.1 - Universal queries
-## 2.2 - Common Endpoint Names to Try
-## 2.3 - Try Different Request Methods
-## 2.4 - Initial Testing Once Found
-# 3. Exploiting Unsanitized Arguments
-# 4. Discovering Schema Information
+# Table of Contents
 
-
-```
-
-
+1. [GraphQL API Vulnerabilities](#1-graphql-api-vulnerabilities)
+   - 1.1 [What is GraphQL](#11---what-is-graphql)
+   - 1.2 [How GraphQL Works](#12---how-graphql-works)
+   - 1.3 [What is a GraphQL schema](#13---what-is-a-graphql-schema)
+   - 1.4 [What are GraphQL queries](#14---what-are-graphql-queries)
+   - 1.5 [What are GraphQL mutations](#15---what-are-graphql-mutations)
+   - 1.6 [Building Blocks of Queries & Mutations](#16---building-blocks-of-queries--mutations)
+     - 1. [Fields](#1-fields)
+     - 2. [Arguments](#2-arguments)
+     - 3. [Variables](#3-variables)
+     - 4. [Aliases](#4-aliases)
+     - 5. [Fragments](#5-fragments)
+   - 1.7 [Subscriptions: Real-Time Updates](#17---subscriptions-real-time-updates)
+   - 1.8 [Introspection: The API's Self-Documentation Feature](#18---introspection-the-apis-self-documentation-feature)
+   - 1.9 [Example Exploitation with Mutations](#19---example-exploitation-with-mutations)
+2. [Finding GraphQL Endpoints](#2-finding-graphql-endpoints)
+   - 2.1 [Universal queries](#21---universal-queries)
+   - 2.2 [Common Endpoint Names to Try](#22---common-endpoint-names-to-try)
+   - 2.3 [Try Different Request Methods](#23---try-different-request-methods)
+   - 2.4 [Initial Testing Once Found](#24---initial-testing-once-found)
+3. [Exploiting Unsanitized Arguments](#3-exploiting-unsanitized-arguments)
+4. [Discovering Schema Information](#4-discovering-schema-information)
+5. [Bypassing GraphQL Introspection Defenses](#5-bypassing-graphql-introspection-defenses)
+6. [Bypassing Rate Limiting Using Aliases](#6-bypassing-rate-limiting-using-aliases)
+7. [GraphQL CSRF](#7-graphql-csrf)
+8. [Tools of the Trade](#8-tools-of-trade)
 
 ---
 
