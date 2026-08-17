@@ -392,9 +392,36 @@ query {
 
 ---
 
-## 1.7 - Example Exploitation with Mutations
+## 1.7 - Subscriptions: Real-Time Updates
 
-Let us start by identifying all mutations supported by the backend and their arguments. We will use the following introspection query:
+Subscriptions keep a connection open (typically via WebSockets) so the server can push updates to the client the moment something changes — great for chat apps, live dashboards, or collaborative editing tools.
+
+---
+
+## 1.8 - Introspection: The API's Self-Documentation Feature
+
+Introspection lets you *ask the API about itself* — what types, fields, queries, and mutations it supports. It's meant for tools like GraphQL IDEs and auto-generated docs.
+
+```graphql
+{
+  __schema {
+    types {
+      name
+      fields {
+        name
+      }
+    }
+  }
+}
+```
+
+⚠️ **Security note:** This is a big one. If introspection is left enabled in a live production environment, an attacker can use it to map out the *entire* API — including hidden or sensitive fields/mutations that were never meant to be publicly known. Best practice: **disable introspection in production.**
+
+---
+
+## 1.9 - Example Exploitation with Mutations
+
+Usually, we should start with identifying all **mutations** supported by the backend and their arguments. We will use the following introspection query:
 
 ```
 query {
@@ -505,34 +532,7 @@ After logging in, we can now access the admin endpoint, meaning we have successf
 
 ---
 
-## Subscriptions: Real-Time Updates
-
-Subscriptions keep a connection open (typically via WebSockets) so the server can push updates to the client the moment something changes — great for chat apps, live dashboards, or collaborative editing tools.
-
----
-
-## Introspection: The API's Self-Documentation Feature
-
-Introspection lets you *ask the API about itself* — what types, fields, queries, and mutations it supports. It's meant for tools like GraphQL IDEs and auto-generated docs.
-
-```graphql
-{
-  __schema {
-    types {
-      name
-      fields {
-        name
-      }
-    }
-  }
-}
-```
-
-⚠️ **Security note:** This is a big one. If introspection is left enabled in a live production environment, an attacker can use it to map out the *entire* API — including hidden or sensitive fields/mutations that were never meant to be publicly known. Best practice: **disable introspection in production.**
-
----
-
-## Quick Recap: Where the Risk Comes From
+### Quick Recap: Where the Risk Comes From
 
 | Feature | What it's for | How it can be abused |
 |---|---|---|
@@ -541,7 +541,7 @@ Introspection lets you *ask the API about itself* — what types, fields, querie
 | Aliases | Batching multiple operations | Bypassing rate limits (e.g., brute-forcing passwords) |
 | Single endpoint + POST | Simplicity | Can make GraphQL requests vulnerable to CSRF if not protected |
 
-*Source: adapted and simplified from PortSwigger's Web Security Academy — "What is GraphQL?"*
+---
 
 
 
