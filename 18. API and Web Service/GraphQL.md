@@ -920,6 +920,11 @@ This returns a complete map of the API: every query, mutation, subscription, typ
 
 Introspection responses are huge — often thousands of lines of nested JSON — and hard to read manually. A [GraphQL visualizer](https://nathanrandal.com/graphql-visualizer/) (an online tool) can turn that raw response into a diagram showing how types and operations relate to each other, making it much easier to spot interesting attack surface.
 
+Another step to make is to `add the introspection query to site map` and then explore what we can do:
+1. Right-click the request and select `GraphQL` > `Save GraphQL queries to site map`.
+2. Go to `Target` > `Site map` to see the API queries.
+3. Use the `GraphQL tab` and find other query you can make. Right-click the request and select `Send to Repeater` to make use of it.
+
 ---
 
 ## What If Introspection Is Disabled? Try "Suggestions"
