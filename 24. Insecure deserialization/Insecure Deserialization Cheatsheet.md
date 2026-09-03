@@ -1,4 +1,4 @@
-# 24.3 - Insecure Deserialization Cheatsheet
+# Insecure Deserialization Cheatsheet
 
 Quick-reference only — assumes you already know the fundamentals (serialize/deserialize, why it's dangerous, magic methods, gadget chains).
 
