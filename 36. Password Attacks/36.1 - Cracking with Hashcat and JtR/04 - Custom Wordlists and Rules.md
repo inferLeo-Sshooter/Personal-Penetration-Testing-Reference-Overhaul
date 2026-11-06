@@ -204,6 +204,16 @@ Upon inspecting `jane_smith_usernames.txt`, you'll encounter a diverse array of 
 
 This comprehensive list, tailored to the target's name, is valuable in a brute-force attack.
 
+| Command | Description |
+|---------|-------------|
+| `username-anarchy Jane Smith` | Generate possible usernames for "Jane Smith" |
+| `username-anarchy -i names.txt` | Use a file (names.txt) with names for input. Can handle space, CSV, or TAB delimited names |
+| `username-anarchy -a --country us` | Automatically generate usernames using common names from the US dataset |
+| `username-anarchy -l` | List available username format plugins |
+| `username-anarchy -f format1,format2` | Use specific format plugins for username generation (comma-separated) |
+| `username-anarchy -@ example.com` | Append @example.com as a suffix to each username |
+| `username-anarchy --case-insensitive` | Generate usernames in case-insensitive (lowercase) format |
+
 ---
 
 ## 6. CUPP
@@ -248,6 +258,12 @@ Invoke `CUPP` in interactive mode, `CUPP` will guide you through a series of que
 $ cupp -i
 ```
 
+| Command | Description |
+|---------|-------------|
+| `cupp -i` | Generate wordlist based on personal information (interactive mode) |
+| `cupp -w profiles.txt` | Generate a wordlist from a predefined profile file |
+| `cupp -l` | Download popular password lists like rockyou.txt |
+
 ### Filtering results to match a password policy
 
 We now have a generated `username.txt` list and `jane.txt` password list, but real systems usually enforce rules about what counts as a valid password. Say Jane's company (AHI) requires:
@@ -279,6 +295,18 @@ What each piece checks:
 |`([!@#$%^&*].*){2,}`	|contains at least 2 special characters from the set|
 
 This trims the list dramatically — in this example, from roughly 46,000 candidate passwords down to about 7,900 that actually meet the policy, all saved to `jane-filtered.txt`. The result is a much smaller, much higher-quality list to test, instead of wasting time on candidates that could never have been valid passwords in the first place.
+
+| Policy Requirement | Grep Regex Pattern | Explanation |
+|--------------------|-------------------|-------------|
+| **Minimum Length** (e.g., 8 characters) | `grep -E '^.{8,}$' wordlist.txt` | `^` matches the start of the line, `.` matches any character, `{8,}` matches 8 or more occurrences, `$` matches the end of the line |
+| **At Least One Uppercase Letter** | `grep -E '[A-Z]' wordlist.txt` | `[A-Z]` matches any uppercase letter |
+| **At Least One Lowercase Letter** | `grep -E '[a-z]' wordlist.txt` | `[a-z]` matches any lowercase letter |
+| **At Least One Digit** | `grep -E '[0-9]' wordlist.txt` | `[0-9]` matches any digit |
+| **At Least One Special Character** | `grep -E '[!@#$%^&*()_+-=[]{};'"'"':"\,.<>/?]' wordlist.txt` | `[!@#$%^&*()_+-=[]{};':"\,.<>/?]` matches any special character (symbol) |
+| **No Consecutive Repeated Characters** | `grep -E '(.)\1' wordlist.txt` | `(.)` captures any character, `\1` matches the previously captured character. This pattern will match any line with consecutive repeated characters. Use `grep -v` to invert the match |
+| **Exclude Common Patterns** (e.g., "password") | `grep -v -i 'password' wordlist.txt` | `-v` inverts the match, `-i` makes the search case-insensitive. This pattern will exclude any line containing "password" (or "Password", "PASSWORD", etc.) |
+| **Exclude Dictionary Words** | `grep -v -f dictionary.txt wordlist.txt` | `-f` reads patterns from a file. dictionary.txt should contain a list of common dictionary words, one per line |
+| **Combination of Requirements** | `grep -E '^.{8,}$' wordlist.txt \| grep -E '[A-Z]'` | This command filters a wordlist to meet multiple password policy requirements. It first ensures that each word has a minimum length of 8 characters, and then pipes the result into a second grep command to match only words that contain at least one uppercase letter |
 
 ---
 
