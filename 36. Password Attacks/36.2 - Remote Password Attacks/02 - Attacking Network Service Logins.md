@@ -6,14 +6,8 @@
   - [NetExec](#netexec)
   - [Evil-WinRM](#evil-winrm)
 - [SSH](#ssh)
-  - [Brute-forcing SSH logins with Hydra](#brute-forcing-ssh-logins-with-hydra)
 - [RDP](#rdp)
-  - [Connecting with xfreerdp](#connecting-with-xfreerdp)
-  - [Brute-forcing RDP with Hydra](#brute-forcing-rdp-with-hydra)
 - [SMB](#smb)
-  - [Brute-forcing SMB with Hydra](#brute-forcing-smb-with-hydra)
-  - [Checking what you can access with NetExec](#checking-what-you-can-access-with-netexec)
-  - [Browsing shares with smbclient](#browsing-shares-with-smbclient)
 
 ---
 
