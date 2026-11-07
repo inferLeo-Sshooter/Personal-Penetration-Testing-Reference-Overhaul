@@ -10,6 +10,9 @@
 3. [Hydra: a fast login-cracking tool](#hydra-a-fast-login-cracking-tool)
 4. [Medusa: another parallel login cracker](#medusa-another-parallel-login-cracker)
 5. [Custom Wordlist](#Custom-Wordlist)
+6. [Password spraying](#Password-spraying)
+7. [Credential Stuffing](#Credential-Stuffing)
+8. [Default Credentials](#Default-Credentials)
 
 ---
 
@@ -320,7 +323,112 @@ medusa -H web_servers.txt -U usernames.txt -P passwords.txt -M http -m GET
 
 For **Custom wordlist** and **rules filtering**, check section `36.1`
 
-### Take away
+---
+
+## Password Spraying
+
+In a nutshell: `one password, many accounts`
+
+Instead of hammering a single account with thousands of password guesses (which tends to trigger lockouts), **password spraying** flips the approach: try **one single password across many different usernames**. 
+
+It works especially well in organizations where new accounts get created with a predictable default password that not everyone bothers to change — e.g., if it's known that IT sets up new hires with `ChangeMe123!`, it's worth testing that one password against every known username to see who never updated it.
+
+### Tools
+
+- **Web applications:** `Burp Suite` is a solid choice
+- **Active Directory environments:** `NetExec` or `Kerbrute` are the go-to tools
+
+### Example
+
+```bash
+$ netexec smb 10.100.38.0/24 -u usernames.list -p 'ChangeMe123!'
+```
+
+This tests the single password `ChangeMe123!` against every username in the list, across an entire subnet of machines at once.
+
+> **Why spray instead of brute-force?** Most account lockout policies trigger after X *failed* attempts on a **single account**. Spraying stays under that threshold per-account by trying each username only once (or a few times) before moving to the next, making it much stealthier against lockout defenses.
+
+---
+
+## Credential Stuffing
+
+**Credential stuffing** takes real username:password pairs that were **already stolen from one service** (think a leaked database from an old breach) and tries them against a *different* service — betting that the person reused the same login elsewhere. 
+
+Because so many people reuse passwords across email, social media, and work systems, this works more often than you'd hope.
+
+### Example with Hydra
+
+If you have a list of `username:password` pairs from a leak, Hydra's `-C` flag runs them as combined pairs (instead of testing every username against every password separately):
+
+```bash
+$ hydra -C user_pass.list ssh://10.100.38.23
+```
+
+The key difference from a normal brute-force run: **each line in the list is tested as an exact, pre-matched pair — not every possible username/password combination**.
+
+---
+
+## Default Credentials
+
+Tons of devices and software — routers, firewalls, databases, IoT devices — ship with a known, factory-set **default username and password**. Best practice says admins should change these during setup, but in practice, it's often skipped.
+
+### Searching known defaults with a cheat-sheet tool
+
+The [Default Credentials Cheat Sheet](https://github.com/ihebski/DefaultCreds-cheat-sheet) project bundles a searchable database of known factory defaults for common products.
+
+Install it:
+```bash
+$ pip3 install defaultcreds-cheat-sheet
+```
+
+Search for a specific product:
+```bash
+$ creds search linksys
+```
+```
++---------------+---------------+------------+
+| Product       |    username   |  password  |
++---------------+---------------+------------+
+| linksys       |    <blank>    |  <blank>   |
+| linksys       |    <blank>    |   admin    |
+| linksys       | Administrator |   admin    |
+| linksys       |     admin     |   admin    |
+| linksys (ssh) |     admin     |   admin    |
+| linksys (ssh) |      root     |   admin    |
++---------------+---------------+------------+
+```
+
+You don't always need a tool for this either — a lot of default credentials are published right in the vendor's own setup documentation.
+
+### Turning defaults into an attack list
+
+Once you've identified which products/applications are in use on a target network, you can look up their defaults, compile them into a `username:password` list, and reuse the same Hydra approach from credential stuffing:
+
+```bash
+$ hydra -C defaults.list ssh://<target-IP>
+```
+
+### Default router credentials
+
+Routers are a classic (if slightly less common these days) target for this technique, since they're a critical piece of network infrastructure that's sometimes overlooked during hardening — especially in internal testing environments that never got cleaned up.
+
+Default credentials are also commonly associated with routers. One such list is available [here](https://www.softwaretestinghelp.com/default-router-username-and-password-list/).
+
+**Some examples:**
+
+| Router Brand | Default Admin Page | Default Username | Default Password |
+|---------------|---------------------|---------------------|----------------------|
+| 3Com | http://192.168.1.1 | admin | Admin |
+| Belkin | http://192.168.2.1 | admin | admin |
+| BenQ | http://192.168.1.1 | admin | Admin |
+| D-Link | http://192.168.0.1 | admin | Admin |
+| Digicom | http://192.168.1.254 | admin | Michelangelo |
+| Linksys | http://192.168.1.1 | admin | Admin |
+| Netgear | http://192.168.0.1 | admin | password |
+
+---
+
+## Quick Recap
 
 Brute forcing works because:
 - Weak/reused/default passwords are everywhere.
@@ -331,3 +439,15 @@ It's defended against by:
 - Changing default usernames *and* passwords.
 - Account lockouts, rate-limiting, CAPTCHAs.
 - Multi-factor authentication.
+
+
+| Technique | Strategy | Typical tools |
+|-----------|-----------|------------------|
+| Password Spraying | 1 password → many usernames | NetExec, Kerbrute, Burp Suite |
+| Credential Stuffing | Reuse leaked real credential pairs elsewhere | Hydra (`-C` flag) |
+| Default Credentials | Try unchanged factory defaults | `defaultcreds-cheat-sheet`, vendor docs |
+
+**Key idea:** All three techniques exploit the same underlying human/organizational tendency — predictability. Whether it's a shared setup password nobody rotated, a reused login from another breach, or a factory default nobody bothered to change, the attacker isn't "cracking" anything in the traditional sense — they're just testing whether basic hygiene was followed.
+
+---
+
