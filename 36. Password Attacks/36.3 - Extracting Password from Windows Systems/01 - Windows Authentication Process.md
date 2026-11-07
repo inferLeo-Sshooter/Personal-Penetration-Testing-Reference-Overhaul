@@ -15,7 +15,9 @@
 
 ### The big picture
 
-Windows essentially has **two parallel hash databases**:
+**Where Windows keeps the secrets in the first place?**
+
+There are really only 4 places to know about. Windows essentially has **two parallel hash databases**:
 - one for **local accounts** (`SAM database`)
 - one for the **whole domain** (`NTDS.dit`)
 - plus one **process** that holds decrypted secrets in memory (`LSASS`)
