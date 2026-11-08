@@ -56,7 +56,7 @@ This opens the Stored User Names and Passwords dialog, where backup/restore opti
 
 ---
 
-## 1. Enumerating credentials with cmdkey
+## Enumerating credentials with cmdkey
 
 Windows ships with a built-in command, **cmdkey**, that lists what's currently saved in the logged-in user's Credential Manager — no special tools needed.
 
@@ -108,7 +108,7 @@ This opens a new `cmd.exe` session running **as `mcharles`**, using the credenti
 
 ---
 
-## 2. Extracting credentials with Mimikatz
+## Extracting credentials with Mimikatz
 
 If you do want the actual plaintext values (not just the ability to impersonate via `runas`), tools like **Mimikatz** can extract them. There are two main approaches within Mimikatz:
 - **`sekurlsa`** — pull credentials live out of LSASS process memory
