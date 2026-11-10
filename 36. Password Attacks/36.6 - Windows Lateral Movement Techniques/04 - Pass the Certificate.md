@@ -28,8 +28,6 @@ Two main ways attackers get their hands on a usable certificate:
 
 **AD CS** (the service that issues certificates in a Windows domain) supports several ways to request a certificate, including **web enrollment** — a browser-based interface, which by default runs over plain **HTTP** at a URL like `/certsrv`. Because it's unencrypted HTTP, it's vulnerable to **NTLM relay attacks**: if we can capture a machine's authentication attempt and relay it to this web enrollment endpoint, the service will dutifully issue a certificate *for that machine* — to us.
 
-<img width="1020" height="413" alt="image" src="https://github.com/user-attachments/assets/0065040c-1a7b-48cb-a14d-02034fad5323" />
-
 ### Step 1: Set up the relay listener
 
 **Impacket's ntlmrelayx** listens for incoming authentication attempts and forwards (relays) them to the AD CS web enrollment service:
