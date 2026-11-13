@@ -343,7 +343,7 @@ If Meterpreter's command set doesn't cover something you need, `shell` drops you
 
 **MSFvenom** is the payload *builder* — a command-line tool that generates standalone payload files you can deliver manually (via email, USB, download link, etc.) rather than needing a live network connection to the target at the moment of delivery.
 
-It also supports **encoding and encryption** to help payloads avoid common AV signatures (covered in depth in the Metasploit series, Part 5).
+It also supports **encoding and encryption** to help payloads avoid common AV signatures (covered in depth in the Using Metasploit Framework section).
 
 ### List all available payloads
 
@@ -364,7 +364,7 @@ Framework Payloads (592 total) [--payload <value>]
 
 ## 7. Staged vs. stageless — a deeper look
 
-We covered this in Part 4 of the Metasploit series, but MSFvenom's naming conventions make it concrete. The **name itself** tells you which type a payload is.
+We covered this in Using Metasploit section, but MSFvenom's naming conventions make it concrete. The **name itself** tells you which type a payload is.
 
 ### The rule: slashes signal stages
 
