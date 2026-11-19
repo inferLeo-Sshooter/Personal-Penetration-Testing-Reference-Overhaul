@@ -4,10 +4,12 @@
 
 - [Files](#files)
   - [Configuration files](#configuration-files)
+  - [Web root and spool/mail directories](#web-root-and-spoolmail-directories)
   - [Databases](#databases)
   - [Notes](#notes)
   - [Scripts](#scripts)
   - [Cronjobs](#cronjobs)
+  - [SSH Keys](#ssh-keys)
 - [History: shell history and logs](#history-shell-history-and-logs)
   - [Shell command history](#shell-command-history)
   - [Log files](#log-files)
@@ -78,6 +80,38 @@ $ for i in $(find / -name "*.cnf" 2>/dev/null | grep -v "doc\|lib"); do
 File: /etc/mysql/mysql.conf.d/mysqld.cnf
 user = mysql
 ```
+
+### Web root and spool/mail directories
+
+The `/var` directory typically holds the web root for whatever web server is running on the host. The web root is a prime spot for database credentials or other credentials that can be leveraged for further access — a classic example being MySQL database credentials sitting inside a WordPress configuration file:
+
+```bash
+$ grep 'DB_USER\|DB_PASSWORD' wp-config.php
+
+define( 'DB_USER', 'wordpressuser' );
+define( 'DB_PASSWORD', 'WPadmin123!' );
+```
+
+If accessible, the **spool** or **mail** directories are also worth checking — they can likewise hold valuable information or credentials. As above, it's common to find credentials sitting in web root files (MySQL connection strings, WordPress configs, etc.).
+
+A broader, less targeted way to catch config-named files system-wide (beyond just `.conf`/`.config`/`.cnf`) is searching for "config" anywhere in the filename:
+
+```bash
+$ find / ! -path "*/proc/*" -iname "*config*" -type f 2>/dev/null
+
+/etc/ssh/ssh_config
+/etc/ssh/sshd_config
+/etc/python3/debian_config
+/etc/kbd/config
+/etc/manpath.config
+/boot/config-4.4.0-116-generic
+/boot/grub/i386-pc/configfile.mod
+/sys/devices/pci0000:00/0000:00:00.0/config
+/sys/devices/pci0000:00/0000:00:01.0/config
+<SNIP>
+```
+
+This casts a wider net than the extension-based search above, so expect more noise (kernel/system `config` files), but it can also surface config files that don't use the standard `.conf`/`.config`/`.cnf` extensions.
 
 ### Databases
 
@@ -162,6 +196,18 @@ $ ls -la /etc/cron.d/
 Worth reading through each scheduled job's underlying script for embedded credentials or paths to credential files.
 ```bash
 ls -la /etc/cron.*/
+```
+
+### SSH Keys
+
+Worth searching the system for accessible SSH **private keys**. You may locate a private key belonging to a more privileged user — letting you SSH back into the box with elevated access — or a key that works against *other* hosts in the environment entirely.
+
+Whenever you find SSH keys, also check the `known_hosts` file. It lists the public keys of every host the user has previously connected to, which can be useful for lateral movement or for identifying other targets where the same key (or credentials found on that other host) might help with privilege escalation on your current target.
+
+```bash
+$ ls ~/.ssh
+
+id_rsa  id_rsa.pub  known_hosts
 ```
 
 ---
