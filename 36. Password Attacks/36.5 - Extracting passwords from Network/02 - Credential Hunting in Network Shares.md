@@ -1,5 +1,11 @@
 # Credential Hunting in Network Shares
 
+---
+
+Also check `38.5 - Interacting with Users` about the `SCF Files on a File Share` and  `Malicious .lnk Files`
+
+---
+
 ## Table of Contents
 
 - [Hunting from Windows](#hunting-from-windows)
