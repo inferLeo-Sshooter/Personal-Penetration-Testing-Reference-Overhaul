@@ -1,5 +1,10 @@
 # Credential Hunting in Windows
 
+---
+> For an in-depth Credential Hunting in Windows, take a look at **38.5 - Credential Theft** in Windows.
+
+---
+
 ## Table of Contents
 
 - [Search Tool 1: Windows Search (built-in, GUI)](#search-tool-1-windows-search-built-in-gui)
