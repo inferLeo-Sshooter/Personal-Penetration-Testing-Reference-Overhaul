@@ -1,5 +1,11 @@
 # Credential Hunting in Network Traffic
 
+---
+
+Also check `38.5 - Interacting with Users`
+
+---
+
 ## Table of Contents
 
 - [Why network traffic is still worth checking](#why-network-traffic-is-still-worth-checking)
