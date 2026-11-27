@@ -39,7 +39,7 @@ Even though it's against best security practice, many applications save password
 [findstr](https://ss64.com/nt/findstr.html) is a built-in Windows command-line tool that searches file contents for a specific word or pattern — similar to Ctrl+F, but run against many files at once from the command line.
 
 ```
-PS C:\evilcorp> findstr /SIM /C:"password" *.txt *.ini *.cfg *.config *.xml
+PS C:\evilcorp> findstr /SIM /C:"password" *.txt *.ini *.cfg *.config *.xml *.git *.ps1 *.yml
 ```
 
 | Flag | What it does |
